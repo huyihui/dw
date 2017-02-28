@@ -1,0 +1,324 @@
+my $psql = "psql -a -h localhost -d bank -U postgres";
+our ($a)=@ARGV;
+$str = substr($a,5,5);
+$cust = "cust-".$str;
+$card = "card-".$str;
+$acct = "acct-".$str;
+#经过分析card表满足
+open(PSQL,"| $psql");
+print PSQL<<END;
+set client_encoding=utf-8;
+
+
+create table intergration.vt_inc(ACCT_NO varchar(50),LOADING_DATE date);
+insert into intergration.vt_inc (ACCT_NO,LOADING_DATE) 
+select ACCT_NO,'$a' as LOADING_DATE
+from near_source_model_layer."$card";
+insert into intergration.PARTY_EVENT_RELATION_HISTORY(party_id, LOADING_DATE) select ACCT_NO,LOADING_DATE from intergration.vt_inc;
+drop table intergration.vt_inc;
+
+create table intergration.vt_inc(PARTY_ID varchar(50),CUST_ID varchar(50),ACCT_NO varchar(50),LOADING_DATE date);
+insert into intergration.vt_inc (PARTY_ID,CUST_ID, ACCT_NO, LOADING_DATE)
+select CUST_ID,CUST_ID, ACCT_NO, '$a' LOADING_DATE
+from near_source_model_layer."$card"
+where (CUST_ID, ACCT_NO) not in (select CUST_ID, ACCT_NO from intergration.ACCOUNT_CUST_RELATION_HISTORY);
+insert into intergration.ACCOUNT_CUST_RELATION_HISTORY(PARTY_ID,CUST_ID, ACCT_NO, LOADING_DATE) select PARTY_ID, CUST_ID, ACCT_NO, LOADING_DATE from intergration.vt_inc;
+drop table intergration.vt_inc;
+
+
+
+create table intergration.vt_inc(CUST_ID varchar(50),ACCT_NO varchar(50),LOADING_DATE date);
+insert into intergration.vt_inc (CUST_ID, ACCT_NO, LOADING_DATE) 
+select CUST_ID, ACCT_NO,'$a' as LOADING_DATE
+from near_source_model_layer."$card";
+insert into intergration.PARTY_AGREEMENT_RELATION_HISTORY(party_id, agreement_id, LOADING_DATE) 
+select CUST_ID, ACCT_NO, LOADING_DATE from intergration.vt_inc;
+drop table intergration.vt_inc;
+
+
+
+
+
+create table intergration.vt_new as select * from intergration.ACCOUNT where 1=0;
+insert into intergration.vt_new(AGREEMENT_ID,ACCT_NO,ACCOUNT_INVALID_DATE,FIRST_OPEN_DATE,FIRST_ACTIVE_DATE,REFERENCE_CODE,AUTO_REPAY_TYPE_CODE,CANCEL_ACCT_DATE,APPLICATION_NO,ACCOUNT_AGREE_NO,CUST_ID,ACCOUNT_START_DT,ACCOUNT_END_DT
+)
+select acct.ACCT_NO,acct.ACCT_NO,acct.INVALID_DATE,FIRST_OPEN_DATE,cust.FIRST_ACTIVE_DATE,null,AUTO_REPAY_TYPE_CODE,CANCEL_ACCT_DATE,APPLICATION_NO,null,cust.CUST_ID,'$a','2999-12-31'
+from near_source_model_layer."$acct" as acct,near_source_model_layer."$card" as card,near_source_model_layer."$cust" as cust
+where acct.ACCT_NO = card.ACCT_NO and acct.CUST_ID = cust.CUST_ID;
+
+create table intergration.vt_inc as select * from intergration.ACCOUNT where 1=0;
+insert into intergration.vt_inc(AGREEMENT_ID,ACCT_NO,ACCOUNT_INVALID_DATE,FIRST_OPEN_DATE,FIRST_ACTIVE_DATE,REFERENCE_CODE,AUTO_REPAY_TYPE_CODE,CANCEL_ACCT_DATE,APPLICATION_NO,ACCOUNT_AGREE_NO,CUST_ID,ACCOUNT_START_DT,ACCOUNT_END_DT) 
+select AGREEMENT_ID,ACCT_NO,ACCOUNT_INVALID_DATE,FIRST_OPEN_DATE,FIRST_ACTIVE_DATE,REFERENCE_CODE,AUTO_REPAY_TYPE_CODE,CANCEL_ACCT_DATE,APPLICATION_NO,ACCOUNT_AGREE_NO,CUST_ID,ACCOUNT_START_DT,ACCOUNT_END_DT 
+from intergration.vt_new
+where (AGREEMENT_ID,ACCT_NO,APPLICATION_NO,CUST_ID) not in(
+select AGREEMENT_ID,ACCT_NO,APPLICATION_NO,CUST_ID 
+from intergration.ACCOUNT
+where ACCOUNT_END_DT = '2999-12-31');
+
+update intergration.ACCOUNT
+set ACCOUNT_END_DT = '$a'
+where ACCOUNT_END_DT = '2999-12-31' and AGREEMENT_ID not in (select AGREEMENT_ID from intergration.vt_new)
+and AGREEMENT_ID in (select AGREEMENT_ID from intergration.ACCOUNT);
+
+update  intergration.ACCOUNT
+set ACCOUNT_END_DT = '$a'
+where ACCOUNT_END_DT = '2999-12-31' and AGREEMENT_ID in (select AGREEMENT_ID from intergration.vt_inc);
+
+insert into intergration.ACCOUNT(AGREEMENT_ID,ACCT_NO,ACCOUNT_INVALID_DATE,FIRST_OPEN_DATE,FIRST_ACTIVE_DATE,REFERENCE_CODE,AUTO_REPAY_TYPE_CODE,CANCEL_ACCT_DATE,APPLICATION_NO,ACCOUNT_AGREE_NO,CUST_ID,ACCOUNT_START_DT,ACCOUNT_END_DT
+)
+select AGREEMENT_ID,ACCT_NO,ACCOUNT_INVALID_DATE,FIRST_OPEN_DATE,FIRST_ACTIVE_DATE,REFERENCE_CODE,AUTO_REPAY_TYPE_CODE,CANCEL_ACCT_DATE,APPLICATION_NO,ACCOUNT_AGREE_NO,CUST_ID,ACCOUNT_START_DT,ACCOUNT_END_DT
+from intergration.vt_inc;
+
+drop table intergration.vt_new;
+drop table intergration.vt_inc;
+
+
+
+create table intergration.vt_new as select * from intergration.AGREEMENT where 1=0;
+insert into intergration.vt_new(
+AGREEMENT_ID,AGREEMENT_NAME,AGREEMENT_APPLICATION_NO,AGREEMENT_PRODUCT_NO,AGREEMENT_SIGNING_DT,AGREEMENT_EXPIRATION_DT,AGREEMENT_TYPE_CODE,AGREEMENT_CURRENCY_CODE,CARD_KIND_CODE,ISSUE_CHANNEL_CODE,BRANCH_CODE,CARD_SEND_TYPE_CODE,AGREEMENT_MONEYSOURCE_TYPE_CODE,AGREEMENT_OPENACCOUNTMECHANISM_NO,AGREEMENT_OPENACCOUNTEMPLOYEE_NO,AGREEMENT_START_DT,AGREEMENT_END_DT)
+
+select acct.ACCT_NO,null,APPLICATION_NO,null,null,null,null,null,CARD_KIND_CODE,acct.ISSUE_CHANNEL_CODE,acct.BRANCH_CODE,null,null,null,null,'$a','2999-12-31'
+from near_source_model_layer."$acct" as acct,near_source_model_layer."$card" as card,near_source_model_layer."$cust" as cust
+where acct.ACCT_NO = card.ACCT_NO and acct.CUST_ID = cust.CUST_ID;
+
+
+create table intergration.vt_inc as select * from intergration.AGREEMENT where 1=0;
+insert into intergration.vt_inc(AGREEMENT_ID,AGREEMENT_NAME,AGREEMENT_APPLICATION_NO,AGREEMENT_PRODUCT_NO,AGREEMENT_SIGNING_DT,AGREEMENT_EXPIRATION_DT,AGREEMENT_TYPE_CODE,AGREEMENT_CURRENCY_CODE,CARD_KIND_CODE,ISSUE_CHANNEL_CODE,BRANCH_CODE,CARD_SEND_TYPE_CODE,AGREEMENT_MONEYSOURCE_TYPE_CODE,AGREEMENT_OPENACCOUNTMECHANISM_NO,AGREEMENT_OPENACCOUNTEMPLOYEE_NO,AGREEMENT_START_DT,AGREEMENT_END_DT) 
+
+select AGREEMENT_ID,AGREEMENT_NAME,AGREEMENT_APPLICATION_NO,AGREEMENT_PRODUCT_NO,AGREEMENT_SIGNING_DT,AGREEMENT_EXPIRATION_DT,AGREEMENT_TYPE_CODE,AGREEMENT_CURRENCY_CODE,CARD_KIND_CODE,ISSUE_CHANNEL_CODE,BRANCH_CODE,CARD_SEND_TYPE_CODE,AGREEMENT_MONEYSOURCE_TYPE_CODE,AGREEMENT_OPENACCOUNTMECHANISM_NO,AGREEMENT_OPENACCOUNTEMPLOYEE_NO,AGREEMENT_START_DT,AGREEMENT_END_DT 
+from intergration.vt_new
+where (AGREEMENT_ID,AGREEMENT_NAME,AGREEMENT_APPLICATION_NO,AGREEMENT_PRODUCT_NO) not in(
+select AGREEMENT_ID,AGREEMENT_NAME,AGREEMENT_APPLICATION_NO,AGREEMENT_PRODUCT_NO
+from intergration.AGREEMENT
+where AGREEMENT_END_DT = '2999-12-31');
+
+update intergration.AGREEMENT
+set AGREEMENT_END_DT = '$a'
+where AGREEMENT_END_DT = '2999-12-31' and AGREEMENT_ID not in (select AGREEMENT_ID from intergration.vt_new)
+and AGREEMENT_ID in (select AGREEMENT_ID from intergration.AGREEMENT) ;
+
+update  intergration.AGREEMENT
+set AGREEMENT_END_DT = '$a'
+where AGREEMENT_END_DT = '2999-12-31' and AGREEMENT_ID in (select AGREEMENT_ID from intergration.vt_inc);
+
+insert into intergration.AGREEMENT(
+AGREEMENT_ID,AGREEMENT_NAME,AGREEMENT_APPLICATION_NO,AGREEMENT_PRODUCT_NO,AGREEMENT_SIGNING_DT,AGREEMENT_EXPIRATION_DT,AGREEMENT_TYPE_CODE,AGREEMENT_CURRENCY_CODE,CARD_KIND_CODE,ISSUE_CHANNEL_CODE,BRANCH_CODE,CARD_SEND_TYPE_CODE,AGREEMENT_MONEYSOURCE_TYPE_CODE,AGREEMENT_OPENACCOUNTMECHANISM_NO,AGREEMENT_OPENACCOUNTEMPLOYEE_NO,AGREEMENT_START_DT,AGREEMENT_END_DT
+)
+select AGREEMENT_ID,AGREEMENT_NAME,AGREEMENT_APPLICATION_NO,AGREEMENT_PRODUCT_NO,AGREEMENT_SIGNING_DT,AGREEMENT_EXPIRATION_DT,AGREEMENT_TYPE_CODE,AGREEMENT_CURRENCY_CODE,CARD_KIND_CODE,ISSUE_CHANNEL_CODE,BRANCH_CODE,CARD_SEND_TYPE_CODE,AGREEMENT_MONEYSOURCE_TYPE_CODE,AGREEMENT_OPENACCOUNTMECHANISM_NO,AGREEMENT_OPENACCOUNTEMPLOYEE_NO,AGREEMENT_START_DT,AGREEMENT_END_DT
+from intergration.vt_inc;
+
+
+drop table intergration.vt_new;
+drop table intergration.vt_inc;
+
+
+
+
+create table intergration.vt_new as select * from intergration.AGREEMENT_OVERDUE_TIMES_RELATION_HISTORY where 1=0;
+insert into intergration.vt_new(AGREEMENT_ID,AGREEMENT_OVERDUE_TIMES_TYPE,AGREEMENT_OVERDUE_TIMES,LAST_OVERDUE_DATE,LAST_OVDU_STAT_CODE,AOT_START_DT,AOT_END_DT
+)
+select acct.ACCT_NO,acct.OVERDUE_STATUS_CODE,OVERDUE_COUNT,LAST_OVERDUE_DATE,LAST_OVDU_STAT_CODE,'$a','2999-12-31'
+from near_source_model_layer."$acct" as acct,near_source_model_layer."$card" as card,near_source_model_layer."$cust" as cust
+where acct.ACCT_NO = card.ACCT_NO and acct.CUST_ID = cust.CUST_ID;
+
+create table intergration.vt_inc as select * from intergration.AGREEMENT_OVERDUE_TIMES_RELATION_HISTORY where 1=0;
+insert into intergration.vt_inc(AGREEMENT_ID,AGREEMENT_OVERDUE_TIMES_TYPE,AGREEMENT_OVERDUE_TIMES,LAST_OVERDUE_DATE,LAST_OVDU_STAT_CODE,AOT_START_DT,AOT_END_DT) 
+select AGREEMENT_ID,AGREEMENT_OVERDUE_TIMES_TYPE,AGREEMENT_OVERDUE_TIMES,LAST_OVERDUE_DATE,LAST_OVDU_STAT_CODE,AOT_START_DT,AOT_END_DT
+from intergration.vt_new
+where (AGREEMENT_ID,AGREEMENT_OVERDUE_TIMES_TYPE,AGREEMENT_OVERDUE_TIMES,LAST_OVERDUE_DATE,LAST_OVDU_STAT_CODE) not in(
+select AGREEMENT_ID,AGREEMENT_OVERDUE_TIMES_TYPE,AGREEMENT_OVERDUE_TIMES,LAST_OVERDUE_DATE,LAST_OVDU_STAT_CODE
+from intergration.AGREEMENT_OVERDUE_TIMES_RELATION_HISTORY
+where AOT_END_DT = '2999-12-31');
+
+update intergration.AGREEMENT_OVERDUE_TIMES_RELATION_HISTORY
+set AOT_END_DT = '$a'
+where AOT_END_DT = '2999-12-31' and AGREEMENT_ID not in (select AGREEMENT_ID from intergration.vt_new)
+and AGREEMENT_ID in (select AGREEMENT_ID from intergration.AGREEMENT_OVERDUE_TIMES_RELATION_HISTORY);
+
+update  intergration.AGREEMENT_OVERDUE_TIMES_RELATION_HISTORY
+set AOT_END_DT = '$a'
+where AOT_END_DT = '2999-12-31' and AGREEMENT_ID in (select AGREEMENT_ID from intergration.vt_inc);
+
+insert into intergration.AGREEMENT_OVERDUE_TIMES_RELATION_HISTORY(AGREEMENT_ID,AGREEMENT_OVERDUE_TIMES_TYPE,AGREEMENT_OVERDUE_TIMES,LAST_OVERDUE_DATE,LAST_OVDU_STAT_CODE,AOT_START_DT,AOT_END_DT)
+select AGREEMENT_ID,AGREEMENT_OVERDUE_TIMES_TYPE,AGREEMENT_OVERDUE_TIMES,LAST_OVERDUE_DATE,LAST_OVDU_STAT_CODE,AOT_START_DT,AOT_END_DT
+from intergration.vt_inc;
+
+drop table intergration.vt_new;
+drop table intergration.vt_inc;
+
+
+create table intergration.vt_new as select * from intergration.AGREEMENT_STATUS_HISTORY where 1=0;
+insert into intergration.vt_new(AGREEMENT_ID,ACCT_STATUS_CODE,CARD_STATUS_CODE,LOCK_STAT_CODE,ASH_START_DT,ASH_END_DT
+)
+select acct.ACCT_NO,ACCT_STATUS_CODE,CARD_STATUS_CODE,acct.LOCK_STAT_CODE,'2016-6-30','2999-12-31'
+from near_source_model_layer."acct-06-30" as acct,near_source_model_layer."card-06-30" as card,near_source_model_layer."cust-06-30" as cust
+where acct.ACCT_NO = card.ACCT_NO and acct.CUST_ID = cust.CUST_ID;
+
+create table intergration.vt_inc as select * from intergration.AGREEMENT_STATUS_HISTORY where 1=0;
+insert into intergration.vt_inc(AGREEMENT_ID,ACCT_STATUS_CODE,CARD_STATUS_CODE,LOCK_STAT_CODE,ASH_START_DT,ASH_END_DT) 
+select AGREEMENT_ID,ACCT_STATUS_CODE,CARD_STATUS_CODE,LOCK_STAT_CODE,ASH_START_DT,ASH_END_DT
+from intergration.vt_new
+where (AGREEMENT_ID,ACCT_STATUS_CODE,CARD_STATUS_CODE,LOCK_STAT_CODE) not in(
+select AGREEMENT_ID,ACCT_STATUS_CODE,CARD_STATUS_CODE,LOCK_STAT_CODE
+from intergration.AGREEMENT_STATUS_HISTORY
+where ASH_END_DT = '2999-12-31');
+
+update intergration.AGREEMENT_STATUS_HISTORY
+set ASH_END_DT = '2016-6-30'
+where ASH_END_DT = '2999-12-31' and AGREEMENT_ID not in (select AGREEMENT_ID from intergration.vt_new)
+and AGREEMENT_ID in (select AGREEMENT_ID from intergration.AGREEMENT_STATUS_HISTORY);
+
+update  intergration.AGREEMENT_STATUS_HISTORY
+set ASH_END_DT = '2016-6-30'
+where ASH_END_DT = '2999-12-31' and AGREEMENT_ID in (select AGREEMENT_ID from intergration.vt_inc);
+
+insert into intergration.AGREEMENT_STATUS_HISTORY(AGREEMENT_ID,ACCT_STATUS_CODE,CARD_STATUS_CODE,LOCK_STAT_CODE,ASH_START_DT,ASH_END_DT
+)
+select AGREEMENT_ID,ACCT_STATUS_CODE,CARD_STATUS_CODE,LOCK_STAT_CODE,ASH_START_DT,ASH_END_DT
+from intergration.vt_inc;
+
+drop table intergration.vt_new;
+drop table intergration.vt_inc;
+
+
+create table intergration.vt_new as select * from intergration.CARD where 1=0;
+insert into intergration.vt_new(AGREEMENT_ID,CARD_NO,BIN_CODE,MASTER_CARD_NO,OPEN_CARD_DATE,CANCEL_CARD_DATE,CARD_INVALID_DATE,ACTIVE_DATE,MATURITY_DATE,CARD_ISSUE_DATE,CUST_ID,CARD_START_DT,CARD_END_DT
+)
+select acct.ACCT_NO,card.CARD_NO,BIN_CODE,MASTER_CARD_NO,OPEN_CARD_DATE,CANCEL_CARD_DATE,card.INVALID_DATE,ACTIVE_DATE,MATURITY_DATE,CARD_ISSUE_DATE,card.CUST_ID,'$a','2999-12-31'
+from near_source_model_layer."$acct" as acct,near_source_model_layer."$card" as card,near_source_model_layer."$cust" as cust
+where acct.ACCT_NO = card.ACCT_NO and acct.CUST_ID = cust.CUST_ID;
+
+create table intergration.vt_inc as select * from intergration.CARD where 1=0;
+insert into intergration.vt_inc(AGREEMENT_ID,CARD_NO,BIN_CODE,MASTER_CARD_NO,OPEN_CARD_DATE,CANCEL_CARD_DATE,CARD_INVALID_DATE,ACTIVE_DATE,MATURITY_DATE,CARD_ISSUE_DATE,CUST_ID,CARD_START_DT,CARD_END_DT) 
+select AGREEMENT_ID,CARD_NO,BIN_CODE,MASTER_CARD_NO,OPEN_CARD_DATE,CANCEL_CARD_DATE,CARD_INVALID_DATE,ACTIVE_DATE,MATURITY_DATE,CARD_ISSUE_DATE,CUST_ID,CARD_START_DT,CARD_END_DT 
+from intergration.vt_new
+where (AGREEMENT_ID,CARD_NO,OPEN_CARD_DATE,CANCEL_CARD_DATE,CARD_ISSUE_DATE) not in(
+select AGREEMENT_ID,CARD_NO,OPEN_CARD_DATE,CANCEL_CARD_DATE,CARD_ISSUE_DATE
+from intergration.CARD
+where CARD_END_DT = '2999-12-31');
+
+update intergration.CARD
+set CARD_END_DT = '$a'
+where CARD_END_DT = '2999-12-31' and AGREEMENT_ID not in (select AGREEMENT_ID from intergration.vt_new)
+and AGREEMENT_ID in (select AGREEMENT_ID from intergration.CARD);
+
+update  intergration.CARD
+set CARD_END_DT = '$a'
+where CARD_END_DT = '2999-12-31' and AGREEMENT_ID in (select AGREEMENT_ID from intergration.vt_inc);
+
+insert into intergration.CARD(AGREEMENT_ID,CARD_NO,BIN_CODE,MASTER_CARD_NO,OPEN_CARD_DATE,CANCEL_CARD_DATE,CARD_INVALID_DATE,ACTIVE_DATE,MATURITY_DATE,CARD_ISSUE_DATE,CUST_ID,CARD_START_DT,CARD_END_DT)
+select AGREEMENT_ID,CARD_NO,BIN_CODE,MASTER_CARD_NO,OPEN_CARD_DATE,CANCEL_CARD_DATE,CARD_INVALID_DATE,ACTIVE_DATE,MATURITY_DATE,CARD_ISSUE_DATE,CUST_ID,CARD_START_DT,CARD_END_DT
+from intergration.vt_inc;
+
+drop table intergration.vt_new;
+drop table intergration.vt_inc;
+
+
+
+
+create table intergration.vt_new as select * from intergration.CUST where 1=0;
+insert into intergration.vt_new(CUST_ID,PARTY_ID,CUST_NAME,BIRTHDAY,AGE,CERT_NO,EDUCATION_GRADE_CODE,CERT_TYPE_CODE,NATION_CODE,YEAR_INCOME,MARRIAGE_STATUS_CODE,HOME_PHONE,MOBILE_PHONE,CORP_PHONE,E_MAIL_ADDRESS,PUBLIC_PRIVATE_CODE,EXCHANGE_INFO_CODE,START_DT,END_DT
+)
+select CUST_ID,CUST_ID,CUST_NAME,BIRTHDAY,AGE,CERT_NO,EDUCATION_GRADE_CODE,CERT_TYPE_CODE,NATION_CODE,YEAR_INCOME,MARRIAGE_STATUS_CODE,HOME_PHONE,MOBILE_PHONE,CORP_PHONE,E_MAIL_ADDRESS,PUBLIC_PRIVATE_CODE,EXCHANGE_INFO_CODE,'$a','2999-12-31'
+from near_source_model_layer."$cust";
+
+create table intergration.vt_inc as select * from intergration.CUST where 1=0;
+insert into intergration.vt_inc(CUST_ID,PARTY_ID,CUST_NAME,BIRTHDAY,AGE,CERT_NO,EDUCATION_GRADE_CODE,CERT_TYPE_CODE,NATION_CODE,YEAR_INCOME,MARRIAGE_STATUS_CODE,HOME_PHONE,MOBILE_PHONE,CORP_PHONE,E_MAIL_ADDRESS,PUBLIC_PRIVATE_CODE,EXCHANGE_INFO_CODE,START_DT,END_DT) 
+select CUST_ID,PARTY_ID,CUST_NAME,BIRTHDAY,AGE,CERT_NO,EDUCATION_GRADE_CODE,CERT_TYPE_CODE,NATION_CODE,YEAR_INCOME,MARRIAGE_STATUS_CODE,HOME_PHONE,MOBILE_PHONE,CORP_PHONE,E_MAIL_ADDRESS,PUBLIC_PRIVATE_CODE,EXCHANGE_INFO_CODE,START_DT,END_DT
+from intergration.vt_new
+where (CUST_ID,PARTY_ID,CUST_NAME,BIRTHDAY,AGE,CERT_NO) not in(
+select CUST_ID,PARTY_ID,CUST_NAME,BIRTHDAY,AGE,CERT_NO
+from intergration.CUST
+where END_DT = '2999-12-31');
+
+update intergration.CUST
+set END_DT = '$a'
+where END_DT = '2999-12-31' and PARTY_ID not in (select PARTY_ID from intergration.vt_new)
+and PARTY_ID in (select PARTY_ID from intergration.CUST);
+
+update  intergration.CUST
+set END_DT = '$a'
+where END_DT = '2999-12-31' and PARTY_ID in (select PARTY_ID from intergration.vt_inc);
+
+insert into intergration.CUST(CUST_ID,PARTY_ID,CUST_NAME,BIRTHDAY,AGE,CERT_NO,EDUCATION_GRADE_CODE,CERT_TYPE_CODE,NATION_CODE,YEAR_INCOME,MARRIAGE_STATUS_CODE,HOME_PHONE,MOBILE_PHONE,CORP_PHONE,E_MAIL_ADDRESS,PUBLIC_PRIVATE_CODE,EXCHANGE_INFO_CODE,START_DT,END_DT
+)
+select  CUST_ID,PARTY_ID,CUST_NAME,BIRTHDAY,AGE,CERT_NO,EDUCATION_GRADE_CODE,CERT_TYPE_CODE,NATION_CODE,YEAR_INCOME,MARRIAGE_STATUS_CODE,HOME_PHONE,MOBILE_PHONE,CORP_PHONE,E_MAIL_ADDRESS,PUBLIC_PRIVATE_CODE,EXCHANGE_INFO_CODE,START_DT,END_DT
+from intergration.vt_inc;
+
+drop table intergration.vt_new;
+drop table intergration.vt_inc;
+
+
+create table intergration.vt_new as select * from intergration.PARTY where 1=0;
+insert into intergration.vt_new(PARTY_ID,PUBLIC_PRIVATE_CODE,CUST_NAME,BIRTHDAY,GENDER_CODE,PARTY_START_DT,PARTY_END_DT)
+select acct.CUST_ID,PUBLIC_PRIVATE_CODE,CUST_NAME,BIRTHDAY,GENDER_CODE,'$a','2999-12-31'
+from near_source_model_layer."$cust" as cust,near_source_model_layer."$acct" as acct
+where acct.CUST_ID = cust.CUST_ID;
+
+create table intergration.vt_inc as select * from intergration.PARTY where 1=0;
+insert into intergration.vt_inc(PARTY_ID,PUBLIC_PRIVATE_CODE,CUST_NAME,BIRTHDAY,GENDER_CODE,PARTY_START_DT,PARTY_END_DT)
+select PARTY_ID,PUBLIC_PRIVATE_CODE,CUST_NAME,BIRTHDAY,GENDER_CODE,PARTY_START_DT,PARTY_END_DT
+from intergration.vt_new
+where (PARTY_ID,PUBLIC_PRIVATE_CODE,CUST_NAME,BIRTHDAY,GENDER_CODE) not in(
+select PARTY_ID,PUBLIC_PRIVATE_CODE,CUST_NAME,BIRTHDAY,GENDER_CODE
+from intergration.PARTY
+where PARTY_END_DT = '2999-12-31');
+
+update intergration.PARTY
+set PARTY_END_DT = '$a'
+where PARTY_END_DT = '2999-12-31' and PARTY_ID not in (select PARTY_ID from intergration.vt_new)
+and PARTY_ID in (select PARTY_ID from intergration.PARTY);
+
+update intergration.PARTY
+set PARTY_END_DT = '$a'
+where PARTY_END_DT = '2999-12-31' and PARTY_ID in (select PARTY_ID from intergration.vt_inc);
+
+insert into intergration.PARTY(
+PARTY_ID,PUBLIC_PRIVATE_CODE,CUST_NAME,BIRTHDAY,GENDER_CODE,PARTY_START_DT,PARTY_END_DT)
+select PARTY_ID,PUBLIC_PRIVATE_CODE,CUST_NAME,BIRTHDAY,GENDER_CODE,PARTY_START_DT,PARTY_END_DT 
+from intergration.vt_inc;
+
+drop table intergration.vt_new;
+drop table intergration.vt_inc;
+
+
+
+
+create table intergration.vt_new as select * from intergration.PARTY_BUSINESS_COUNT where 1=0;
+insert into intergration.vt_new(PARTY_ID,CUST_ID,PRODUCT_COUNT,CARD_COUNT,PARTY_START_DT,PARTY_END_DT
+)
+select cust.CUST_ID,cust.CUST_ID,PRODUCT_COUNT,CARD_COUNT,'$a','2999-12-31'
+from near_source_model_layer."$acct" as acct,near_source_model_layer."$card" as card,near_source_model_layer."$cust" as cust
+where acct.ACCT_NO = card.ACCT_NO and acct.CUST_ID = cust.CUST_ID;
+
+create table intergration.vt_inc as select * from intergration.PARTY_BUSINESS_COUNT where 1=0;
+insert into intergration.vt_inc(PARTY_ID,CUST_ID,PRODUCT_COUNT,CARD_COUNT,PARTY_START_DT,PARTY_END_DT) 
+select PARTY_ID,CUST_ID,PRODUCT_COUNT,CARD_COUNT,PARTY_START_DT,PARTY_END_DT
+from intergration.vt_new
+where (PARTY_ID,CUST_ID,PRODUCT_COUNT,CARD_COUNT) not in(
+select PARTY_ID,CUST_ID,PRODUCT_COUNT,CARD_COUNT
+from intergration.PARTY_BUSINESS_COUNT
+where PARTY_END_DT = '2999-12-31');
+
+update intergration.PARTY_BUSINESS_COUNT
+set PARTY_END_DT = '$a'
+where PARTY_END_DT = '2999-12-31' and PARTY_ID not in (select PARTY_ID from intergration.vt_new)
+and PARTY_ID in (select PARTY_ID from intergration.PARTY_BUSINESS_COUNT);
+
+update  intergration.PARTY_BUSINESS_COUNT
+set PARTY_END_DT = '$a'
+where PARTY_END_DT = '2999-12-31' and PARTY_ID in (select PARTY_ID from intergration.vt_inc);
+
+insert into intergration.PARTY_BUSINESS_COUNT(PARTY_ID,CUST_ID,PRODUCT_COUNT,CARD_COUNT,PARTY_START_DT,PARTY_END_DT
+)
+select PARTY_ID,CUST_ID,PRODUCT_COUNT,CARD_COUNT,PARTY_START_DT,PARTY_END_DT
+from intergration.vt_inc;
+
+drop table intergration.vt_new;
+drop table intergration.vt_inc;
+
+
+
+END
+close(PSQL);

@@ -1,0 +1,75 @@
+
+
+
+--以下为元数据没有的整合层表。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。
+
+--事件
+create table vt_inc(
+	trans_desc varchar(50),
+	merchant_category_code varchar(50),
+	merchant_country_code VARCHAR(50),
+	merchant_no varchar(50),
+	debit_credit_flag VARCHAR(50),
+	logic_model_code VARCHAR(50),
+	plan_no varchar(50),
+	trans_code varchar(50),
+	integral_type_code VARCHAR(50),
+	trans_ref_no varchar(50),
+	ini_trans_currency varchar(50),
+	currency_conv_code varchar(50),
+	event_load_dt date
+);
+insert into vt_inc(
+trans_desc,merchant_category_code,
+merchant_country_code,merchant_no,
+debit_credit_flag,logic_model_code,
+plan_no,
+trans_code,
+integral_type_code,
+trans_ref_no,
+ini_trans_currency,
+currency_conv_code,
+event_load_dt
+)
+select trans_desc,merchant_category_code,merchant_country_code,merchant_no,debit_credit_flag,logic_model_code,plan_no,trans_code,integral_type_code,trans_ref_no,ini_trans_currency,currency_conv_code,'2016-06-30' LOADING_DATE
+from near_source_model_layer."acct-06-30"
+where trans_desc not in (select trans_desc from event);
+insert into event select * from vt_inc;
+drop table vt_inc;
+
+--当事人地址信息历史
+create table vt_inc(
+	PARTY_ID varchar(50),
+	LOADING_DATE date
+);
+insert into vt_inc (PARTY_ID,LOADING_DATE)
+select ACCT_NO,'2016-06-30' LOADING_DATE
+from near_source_model_layer."acct-06-30";
+insert into PARTY_ADDRESS_INORMATION_HISTORY select * from vt_inc;
+drop table vt_inc;
+
+--协议与事件关系历史表
+create table vt_inc(
+	AGREEMENT_ID VARCHAR(50),EVENT_TRADE_NO VARCHAR(50),LOADING_DATE date
+);
+insert into vt_inc(AGREEMENT_ID, EVENT_TRADE_NO,LOADING_DATE)
+select AGREEMENT_ID, EVENT_TRADE_NO, '2016-06-30' LOADING_DATE from near_source_model_layer."acct-06-30"
+where (AGREEMENT_ID, EVENT_TRADE_NO) not in (select AGREEMENT_ID, EVENT_TRADE_NO from AGREEMENT_EVENT_RELATION_HISTORY);
+insert into AGREEMENT_EVENT_RELATION_HISTORY select * from vt_inc;
+drop table vt_inc;
+
+
+--当事人地址信息类型代码表
+insert into PARTY_ADDRESS_INORMATION_TYPE_CODE_T (PARTY_ADDRESS_INORMATION_TYPE_CODE, PARTY_ADDRESS_INORMATION_TYPE)
+select PARTY_ADDRESS_INORMATION_TYPE_CODE, PARTY_ADDRESS_INORMATION_TYPE
+from near_source_model_layer."acct-06-30";
+
+--协议状态类型代码
+insert into AGREEMENT_STATUS_TYPE_CODE_T (AGREEMENT_STATUS_TYPE_CODE, AGREEMENT_STATUS_TYPE,LOADING_DATE)
+select AGREEMENT_STATUS_TYPE_CODE, AGREEMENT_STATUS_TYPE,"当前日期" LOADING_DATE
+from near_source_model_layer."acct-06-30";
+
+--协议逾期次数代码表
+insert into AGREEMENT_OVERDUE_TIMES_TYPE_CODE_T (AGREEMENT_OVERDUE_TIMES_TYPE_CODE, AGREEMENT_OVERDUE_TIMES_TYPE,LOADING_DATE)
+select AGREEMENT_OVERDUE_TIMES_TYPE_CODE, AGREEMENT_OVERDUE_TIMES_TYPE,"当前日期" LOADING_DATE
+from near_source_model_layer."acct-06-30";

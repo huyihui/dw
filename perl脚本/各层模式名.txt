@@ -1,0 +1,5 @@
+技术缓冲层: technology_buffer_layer
+近源模型层: near_source_model_layer
+整合模型层: intergration
+共性加工层: common_processing_layer
+集市应用层: application_market_layer
